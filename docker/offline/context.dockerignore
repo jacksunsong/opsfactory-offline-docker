@@ -1,0 +1,17 @@
+.git
+.docker-build
+dist
+node_modules
+**/node_modules
+target
+**/target
+logs
+**/logs
+output
+.playwright-cli
+.DS_Store
+*.pid
+*.log
+gateway/.gateway-keystore.p12
+gateway/.gateway-keystore.pem
+gateway/agents/*/config/secrets.yaml

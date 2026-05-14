@@ -1,0 +1,6 @@
+.docker-build/
+dist/
+*.tar
+*.tar.gz
+.DS_Store
+

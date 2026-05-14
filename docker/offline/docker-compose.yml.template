@@ -1,0 +1,44 @@
+services:
+  opsfactory:
+    image: __IMAGE_TAG__
+    container_name: opsfactory
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      ENABLE_ONLYOFFICE: "false"
+      ENABLE_LANGFUSE: "false"
+      ENABLE_EXPORTER: "true"
+      ENABLE_OPERATION_INTELLIGENCE: "true"
+      GATEWAY_TLS: "false"
+      OFFICE_PREVIEW_ENABLED: "false"
+      GATEWAY_API_PASSWORD: ""
+    ports:
+      - "5173:5173"
+      - "3000:3000"
+      - "8092:8092"
+      - "8093:8093"
+      - "8094:8094"
+      - "8095:8095"
+      - "8096:8096"
+      - "9091:9091"
+    volumes:
+      - opsfactory_gateway_agents:/app/gateway/agents
+      - opsfactory_gateway_users:/app/gateway/users
+      - opsfactory_gateway_data:/app/gateway/data
+      - opsfactory_knowledge_data:/app/knowledge-service/data
+      - opsfactory_business_intelligence_data:/app/business-intelligence/data
+      - opsfactory_skill_market_data:/app/skill-market/data
+      - opsfactory_control_center_data:/app/control-center/data
+      - opsfactory_operation_intelligence_data:/app/operation-intelligence/data
+      - opsfactory_runtime_config:/app/runtime-config
+
+volumes:
+  opsfactory_gateway_agents:
+  opsfactory_gateway_users:
+  opsfactory_gateway_data:
+  opsfactory_knowledge_data:
+  opsfactory_business_intelligence_data:
+  opsfactory_skill_market_data:
+  opsfactory_control_center_data:
+  opsfactory_operation_intelligence_data:
+  opsfactory_runtime_config:
