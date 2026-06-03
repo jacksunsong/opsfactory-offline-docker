@@ -1,0 +1,26 @@
+FROM opsfactory:offline-20260602-linux-amd64
+
+# Install python3-pip (MCP deps can be installed later offline)
+RUN set -eux; \
+    dnf -y install --setopt=install_weak_deps=False --nodocs python3-pip; \
+    dnf clean all; \
+    rm -rf /var/cache/dnf
+
+# Copy knowledge-service artifacts from upstream build
+COPY .patch-staging/knowledge-service/target/knowledge-service.jar /app/knowledge-service/target/
+COPY .patch-staging/knowledge-service/data /app/knowledge-service/data/
+COPY .patch-staging/knowledge-service/config.yaml.example /app/knowledge-service/config.yaml.example
+COPY docker/offline/runtime-overrides/knowledge-service-ctl.sh /app/knowledge-service/scripts/ctl.sh
+
+# Seed knowledge-service data and config
+RUN set -eux; \
+    mkdir -p /app/seed/knowledge-service; \
+    cp -a /app/knowledge-service/data /app/seed/knowledge-service/data; \
+    cp -a /app/knowledge-service/config.yaml.example /app/seed/knowledge-service/config.yaml; \
+    chmod +x /app/knowledge-service/scripts/ctl.sh
+
+# Update entrypoint to start knowledge-service
+COPY docker/offline/entrypoint.sh /usr/local/bin/opsfactory-entrypoint.sh
+RUN chmod +x /usr/local/bin/opsfactory-entrypoint.sh
+
+EXPOSE 3000 5173 8092

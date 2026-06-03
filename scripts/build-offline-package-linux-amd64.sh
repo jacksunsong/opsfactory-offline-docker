@@ -151,6 +151,11 @@ download_goose_rpm() {
     local cached="${VENDOR_DIR}/goose/${GOOSE_RPM_NAME}"
     mkdir -p "$(dirname "${dest}")"
     mkdir -p "$(dirname "${cached}")"
+    # If a pre-built goosed binary is present, skip RPM download (Dockerfile will use it)
+    if [ -f "${PACKAGE_REPO_DIR}/docker/offline/vendor/goose/goosed" ]; then
+        cp "${PACKAGE_REPO_DIR}/docker/offline/vendor/goose/goosed" "${STAGING_DIR}/vendor/goose/goosed"
+        return 0
+    fi
     if [ -n "${GOOSE_RPM_SOURCE}" ]; then
         cp "${GOOSE_RPM_SOURCE}" "${cached}"
     else
@@ -331,6 +336,7 @@ prepare_staging() {
         AGENTS.md
         CLAUDE.md
         README.md
+        pom.xml
         docs
         scripts
         gateway
@@ -354,6 +360,7 @@ prepare_staging() {
     copy_path "${PACKAGE_REPO_DIR}/docker/offline" "${STAGING_DIR}/docker/offline"
     cp "${PACKAGE_REPO_DIR}/docker/offline/context.dockerignore" "${STAGING_DIR}/.dockerignore"
     download_goose_rpm
+    find "${STAGING_DIR}" -name '*.sh' -exec sed -i 's/\r$//' {} +
     sanitize_model_keys
 }
 

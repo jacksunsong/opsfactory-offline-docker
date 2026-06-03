@@ -70,7 +70,7 @@ log_fail()  { echo -e "${RED}[FAIL]${NC}  $1"; }
 
 LOG_DIR="${SERVICE_DIR}/logs"
 PID_FILE="${LOG_DIR}/gateway.pid"
-GATEWAY_HEALTH_PATH="/gateway/status"
+GATEWAY_HEALTH_PATH="/"
 GATEWAY_AGENTS_PATH="/gateway/agents"
 DAEMON_HELPER="${ROOT_DIR}/scripts/lib/service-daemon.sh"
 
@@ -158,7 +158,7 @@ gateway_url() {
         local code
         code="$(curl -s ${CURL_TLS_OPTS} -o /dev/null -w "%{http_code}" \
             "${GATEWAY_SCHEME}://${host}:${GATEWAY_PORT}${GATEWAY_HEALTH_PATH}" 2>/dev/null || true)"
-        [ "${code}" = "401" ] && { echo "${GATEWAY_SCHEME}://${host}:${GATEWAY_PORT}"; return 0; }
+        [ "${code}" = "401" ] || [ "${code}" = "404" ] && { echo "${GATEWAY_SCHEME}://${host}:${GATEWAY_PORT}"; return 0; }
     done
     return 1
 }

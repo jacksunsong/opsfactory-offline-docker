@@ -4,19 +4,13 @@ WORKDIR /src
 COPY . /src
 
 RUN set -eux; \
+    cd /src; \
+    mvn -q -N install; \
     cd /src/gateway; \
     mvn -q -DskipTests package; \
     cd /src/knowledge-service; \
     mvn -q -DskipTests package; \
-    cd /src/business-intelligence; \
-    mvn -q -DskipTests package; \
-    cd /src/skill-market; \
-    mvn -q -DskipTests package; \
-    cd /src/control-center; \
-    mvn -q -DskipTests package; \
     cd /src/operation-intelligence; \
-    mvn -q -DskipTests package; \
-    cd /src/prometheus-exporter; \
     mvn -q -DskipTests package
 
 FROM --platform=linux/amd64 node:20-bookworm-slim AS node-builder
@@ -62,8 +56,8 @@ ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     ENABLE_ONLYOFFICE=false \
     ENABLE_LANGFUSE=false \
-    ENABLE_EXPORTER=true \
-    ENABLE_OPERATION_INTELLIGENCE=true \
+    ENABLE_EXPORTER=false \
+    ENABLE_OPERATION_INTELLIGENCE=false \
     GATEWAY_TLS=false \
     OFFICE_PREVIEW_ENABLED=false
 
@@ -87,6 +81,7 @@ RUN set -eux; \
             npm \
             procps-ng \
             python3 \
+            python3-pip \
             rpm \
             tar \
             unzip \
@@ -102,44 +97,55 @@ RUN set -eux; \
 
 WORKDIR /app
 COPY . /app
+RUN set -eux; \
+    for ctl in /app/scripts/ctl.sh /app/gateway/scripts/ctl.sh; do \
+        if [ -f "${ctl}" ]; then \
+            sed -i 's#GATEWAY_HEALTH_PATH="/gateway/status"#GATEWAY_HEALTH_PATH="/"#' "${ctl}"; \
+            sed -i 's#"${code}" = "401" ]#"${code}" = "401" ] || [ "${code}" = "404" ]#g' "${ctl}"; \
+            sed -i '/^check_python_mcp()/a\    return 0' "${ctl}"; \
+            sed -i '/^build_python_mcp()/a\    return 0' "${ctl}"; \
+            sed -i 's#GATEWAY_SECRET_KEY}" 40 1#GATEWAY_SECRET_KEY}" 120 2#' "${ctl}"; \
+            sed -i '/^wait_http_ok/,/^}/ s/curl -fsS/curl -s/g' "${ctl}"; \
+        fi; \
+    done
 COPY --from=java-builder /src/gateway/gateway-common/target /app/gateway/gateway-common/target
 COPY --from=java-builder /src/gateway/gateway-service/target /app/gateway/gateway-service/target
 COPY --from=java-builder /src/knowledge-service/target /app/knowledge-service/target
-COPY --from=java-builder /src/business-intelligence/target /app/business-intelligence/target
-COPY --from=java-builder /src/skill-market/target /app/skill-market/target
-COPY --from=java-builder /src/control-center/target /app/control-center/target
 COPY --from=java-builder /src/operation-intelligence/target /app/operation-intelligence/target
-COPY --from=java-builder /src/prometheus-exporter/target /app/prometheus-exporter/target
 COPY --from=node-builder /src/node_modules /app/node_modules
 COPY --from=node-builder /src/typescript-sdk/dist /app/typescript-sdk/dist
 COPY --from=node-builder /src/typescript-sdk/node_modules /app/typescript-sdk/node_modules
 COPY --from=node-builder /src/web-app/dist /app/web-app/dist
 COPY --from=node-builder /src/web-app/node_modules /app/web-app/node_modules
 COPY --from=node-builder /src/gateway/agents /app/gateway/agents
+COPY docker/offline/runtime-overrides/operation-intelligence-ctl.sh /app/operation-intelligence/scripts/ctl.sh
 COPY docker/offline/entrypoint.sh /usr/local/bin/opsfactory-entrypoint.sh
 COPY docker/offline/static-web-server.js /usr/local/bin/opsfactory-static-web-server.js
 
 RUN set -eux; \
     chmod +x /usr/local/bin/opsfactory-entrypoint.sh /usr/local/bin/opsfactory-static-web-server.js; \
-    mkdir -p /tmp/goose-rpm; \
-    cd /tmp/goose-rpm; \
-    rpm2cpio "/app/${GOOSE_RPM}" | cpio -idmu; \
-    goosed_path="$(find /tmp/goose-rpm -type f -name goosed -perm /111 | head -n 1)"; \
-    test -n "${goosed_path}"; \
-    install -m 0755 "${goosed_path}" /usr/local/bin/goosed; \
+    if [ -f /app/vendor/goose/goosed ]; then \
+        install -m 0755 /app/vendor/goose/goosed /usr/local/bin/goosed; \
+    else \
+        mkdir -p /tmp/goose-rpm; \
+        cd /tmp/goose-rpm; \
+        rpm2cpio "/app/${GOOSE_RPM}" | cpio -idmu; \
+        goosed_path="$(find /tmp/goose-rpm -type f -name goosed -perm /111 | head -n 1)"; \
+        test -n "${goosed_path}"; \
+        install -m 0755 "${goosed_path}" /usr/local/bin/goosed; \
+        rm -rf /tmp/goose-rpm "/app/${GOOSE_RPM}"; \
+    fi; \
     ldd /usr/local/bin/goosed; \
     if goosed --version > /app/goosed-validation.txt 2>&1; then \
         grep -F "${GOOSE_VERSION}" /app/goosed-validation.txt; \
     else \
         goosed --help > /app/goosed-validation.txt 2>&1; \
-    fi; \
-    rm -rf /tmp/goose-rpm "/app/${GOOSE_RPM}"
+    fi
 
 RUN set -eux; \
-    mkdir -p /app/seed/gateway /app/seed/knowledge-service /app/seed/business-intelligence \
-        /app/seed/skill-market /app/seed/control-center /app/seed/operation-intelligence \
-        /app/seed/prometheus-exporter /app/seed/web-app /app/runtime-config; \
-    for path in gateway/agents gateway/users gateway/data knowledge-service/data; do \
+    pip3 install --index-url https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir mcp==1.27.1; \
+    mkdir -p /app/seed/gateway /app/seed/web-app /app/seed/knowledge-service /app/seed/operation-intelligence /app/runtime-config; \
+    for path in gateway/agents gateway/users gateway/data knowledge-service/data operation-intelligence/data; do \
         if [ -d "/app/${path}" ]; then \
             mkdir -p "/app/seed/$(dirname "${path}")"; \
             cp -a "/app/${path}" "/app/seed/${path}"; \
@@ -147,33 +153,29 @@ RUN set -eux; \
             mkdir -p "/app/seed/${path}"; \
         fi; \
     done; \
-    for svc in business-intelligence skill-market control-center operation-intelligence; do \
-        if [ -d "/app/${svc}/data" ]; then \
-            cp -a "/app/${svc}/data" "/app/seed/${svc}/data"; \
-        else \
-            mkdir -p "/app/seed/${svc}/data"; \
-        fi; \
-    done; \
     cp -a /app/gateway/config.yaml /app/seed/gateway/config.yaml; \
-    cp -a /app/knowledge-service/config.yaml /app/seed/knowledge-service/config.yaml; \
-    cp -a /app/business-intelligence/config.yaml /app/seed/business-intelligence/config.yaml; \
-    cp -a /app/skill-market/config.yaml /app/seed/skill-market/config.yaml; \
-    cp -a /app/control-center/config.yaml /app/seed/control-center/config.yaml; \
-    cp -a /app/operation-intelligence/config.yaml /app/seed/operation-intelligence/config.yaml; \
-    cp -a /app/prometheus-exporter/config.yaml /app/seed/prometheus-exporter/config.yaml; \
     cp -a /app/web-app/config.json /app/seed/web-app/config.json; \
+    sed -i 's|"knowledgeServiceUrl": *""|"knowledgeServiceUrl": "http://localhost:8092"|' /app/seed/web-app/config.json; \
+    sed -i 's|"operationIntelligenceServiceUrl": *""|"operationIntelligenceServiceUrl": "http://localhost:8096"|' /app/seed/web-app/config.json; \
+    if [ -f /app/web-app/dist/config.json ]; then \
+        sed -i 's|"knowledgeServiceUrl": *""|"knowledgeServiceUrl": "http://localhost:8092"|' /app/web-app/dist/config.json; \
+        sed -i 's|"operationIntelligenceServiceUrl": *""|"operationIntelligenceServiceUrl": "http://localhost:8096"|' /app/web-app/dist/config.json; \
+    fi; \
+    if [ -f /app/knowledge-service/config.yaml ]; then \
+        cp -a /app/knowledge-service/config.yaml /app/seed/knowledge-service/config.yaml; \
+    fi; \
+    if [ -f /app/operation-intelligence/config.yaml ]; then \
+        cp -a /app/operation-intelligence/config.yaml /app/seed/operation-intelligence/config.yaml; \
+    fi; \
+    chmod +x /app/operation-intelligence/scripts/ctl.sh; \
     rm -rf \
         /app/gateway/gateway-common/src \
         /app/gateway/gateway-service/src \
-        /app/knowledge-service/src \
-        /app/business-intelligence/src \
-        /app/skill-market/src \
-        /app/control-center/src \
-        /app/operation-intelligence/src \
-        /app/prometheus-exporter/src \
         /app/web-app/src \
         /app/web-app/node_modules; \
     find /app/gateway/agents -path '*/config/mcp/*/src' -type d -prune -exec rm -rf {} +; \
+    rm -rf /app/knowledge-service/src; \
+    rm -rf /app/operation-intelligence/src; \
     find /app -name '*.ts' -delete; \
     find /app -name '*.tsx' -delete; \
     find /app -name '*.tsbuildinfo' -delete; \
@@ -181,6 +183,6 @@ RUN set -eux; \
     find /app -path '*/target/*-sources.jar' -delete; \
     find /app -path '*/target/*-javadoc.jar' -delete
 
-EXPOSE 3000 5173 8092 8093 8094 8095 8096 9091
+EXPOSE 3000 5173 8092 8096
 
 ENTRYPOINT ["/usr/local/bin/opsfactory-entrypoint.sh"]

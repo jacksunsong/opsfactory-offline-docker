@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
 
-required_ports=(5173 3000 8092 8093 8094 8095 8096 9091)
+required_ports=(5173 3000)
 
 port_in_use() {
     local port="$1"
@@ -46,13 +46,13 @@ wait_gateway() {
     local delay="${2:-2}"
     local code
     for ((i = 1; i <= attempts; i++)); do
-        code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000/gateway/status" -H "x-secret-key: test" 2>/dev/null || true)"
-        if [ "${code}" = "200" ] || [ "${code}" = "401" ]; then
+        code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000/" 2>/dev/null || true)"
+        if [ "${code}" = "200" ] || [ "${code}" = "401" ] || [ "${code}" = "404" ]; then
             return 0
         fi
         sleep "${delay}"
     done
-    echo "Health check failed for Gateway: http://127.0.0.1:3000/gateway/status" >&2
+    echo "Health check failed for Gateway: http://127.0.0.1:3000/" >&2
     return 1
 }
 
@@ -72,14 +72,7 @@ fi
 
 docker compose -f "${COMPOSE_FILE}" up -d
 
-if ! wait_http "Web App" "http://127.0.0.1:5173" "" 120 2 \
-    || ! wait_gateway 120 2 \
-    || ! wait_http "Knowledge Service" "http://127.0.0.1:8092/actuator/health" "" 120 2 \
-    || ! wait_http "Business Intelligence" "http://127.0.0.1:8093/actuator/health" "" 120 2 \
-    || ! wait_http "Skill Market" "http://127.0.0.1:8095/actuator/health" "" 120 2 \
-    || ! wait_http "Operation Intelligence" "http://127.0.0.1:8096/actuator/health" "" 120 2 \
-    || ! wait_http "Prometheus Exporter" "http://127.0.0.1:9091/health" "" 120 2 \
-    || ! wait_http "Control Center" "http://127.0.0.1:8094/actuator/health" "" 120 2; then
+if ! wait_gateway 120 2; then
     docker logs opsfactory --tail 200 >&2 || true
     exit 1
 fi

@@ -136,7 +136,7 @@ do_startup() {
     if [ "${mode}" = "background" ]; then
         local log_file="${LOG_DIR}/knowledge-service.log"
         local console_log_file="${LOG_DIR}/knowledge-service-console.log"
-        java_opts+=("-Dlogging.config=classpath:log4j2-file-only.xml" "-jar" "${jar}")
+        java_opts+=("-jar" "${jar}")
         SERVICE_PID="$(daemon_start "${PID_FILE}" "${console_log_file}" env CONFIG_PATH="${SERVICE_DIR}/config.yaml" java "${java_opts[@]}")"
         if ! kill -0 "${SERVICE_PID}" 2>/dev/null; then
             log_error "Failed to start knowledge-service"
